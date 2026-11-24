@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MLP 学习参数的实现与可视化 —— 隐藏层折叠空间与学习率实验</title>
+<style>
+  :root{
+    --ink:#1c2130; --sub:#64748b; --line:#e2e8f0;
+    --blue:#3b82f6; --blue-deep:#1d4ed8;
+    --red:#ef4444; --green:#10b981; --amber:#f59e0b;
+    --card:#ffffff; --bg:#f6f7fb;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0; background:var(--bg); color:var(--ink);
+       font-family:"MiSans","PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+       line-height:1.9; font-size:15.5px;}
+  .page{max-width:880px; margin:0 auto; padding:0 20px 90px;}
+
+  /* ---------- 页头 ---------- */
+  header.hero{
+    margin:0 -20px 8px; padding:64px 32px 46px; text-align:center; color:#fff;
+    background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 55%,#3b82f6 130%);
+    position:relative; overflow:hidden;
+  }
+  header.hero::after{content:""; position:absolute; inset:0;
+    background:radial-gradient(600px 200px at 85% 20%, rgba(255,255,255,.14), transparent);}
+  .kicker{font-size:12.5px; letter-spacing:.35em; opacity:.75; text-transform:uppercase;}
+  h1{font-size:29px; line-height:1.45; margin:14px auto 10px; max-width:640px; font-weight:700;}
+  .meta{font-size:13.5px; opacity:.8;}
+  .badges{margin-top:18px;}
+  .badge{display:inline-block; margin:0 5px; padding:4px 14px; border-radius:99px;
+         background:rgba(255,255,255,.13); backdrop-filter:blur(4px);
+         font-size:12.5px; letter-spacing:.06em;}
+
+  /* ---------- 目录 ---------- */
+  nav.toc{
+    display:flex; flex-wrap:wrap; justify-content:center; gap:8px;
+    margin:-20px auto 46px; position:relative; z-index:2; max-width:700px;
+  }
+  nav.toc a{
+    background:var(--card); border:1px solid var(--line); border-radius:99px;
+    padding:7px 18px; font-size:13.5px; color:var(--ink); text-decoration:none;
+    box-shadow:0 2px 8px rgba(15,23,42,.07); transition:.2s;
+  }
+  nav.toc a:hover{background:var(--blue-deep); color:#fff; border-color:var(--blue-deep);
+    transform:translateY(-2px); box-shadow:0 6px 16px rgba(29,78,216,.25);}
+
+  /* ---------- 章节标题 ---------- */
+  h2{display:flex; align-items:baseline; gap:14px; font-size:21.5px;
+     margin:58px 0 18px;}
+  h2 .num{font-size:13px; font-weight:700; color:var(--blue);
+     background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px;
+     padding:2px 10px; letter-spacing:.05em;}
+  h3{font-size:16px; margin:26px 0 10px; color:#334155;}
+  h3::before{content:"▎"; color:var(--blue); margin-right:6px;}
+  p{margin:12px 0;}
+  b{font-weight:600;}
+
+  /* ---------- 卡片与提示框 ---------- */
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+        padding:20px 24px; margin:18px 0; box-shadow:0 2px 10px rgba(15,23,42,.05);}
+  .key{background:linear-gradient(135deg,#fffbeb,#fef3c7);
+       border:1px solid #fcd34d; border-radius:var(--radius); padding:18px 24px; margin:18px 0;}
+  .key::before{content:"💡 关键理解"; display:block; font-size:12.5px; font-weight:700;
+       color:#b45309; letter-spacing:.1em; margin-bottom:6px;}
+  .note{background:linear-gradient(135deg,#eff6ff,#f0f9ff);
+        border:1px solid #bae6fd; border-radius:var(--radius);
+        padding:18px 24px; margin:18px 0; font-size:14.5px;}
+  .note::before{content:"🔍 意外发现"; display:block; font-size:12.5px; font-weight:700;
+        color:#0369a1; letter-spacing:.1em; margin-bottom:6px;}
+  .refl{background:var(--card); border-left:4px solid var(--blue);
+        border-radius:0 var(--radius) var(--radius) 0; padding:16px 22px; margin:16px 0;
+        box-shadow:0 2px 10px rgba(15,23,42,.05);}
+
+  /* ---------- 代码 ---------- */
+  pre{background:#0f172a; color:#e2e8f0; border-radius:var(--radius);
+      padding:18px 22px; overflow-x:auto; font-size:13.5px; line-height:1.75;
+      box-shadow:0 4px 14px rgba(15,23,42,.18); margin:14px 0;}
+  code{font-family:Consolas,Menlo,"JetBrains Mono",monospace;}
+  p code, li code, td code{background:#eef2f7; padding:2px 7px; border-radius:5px; font-size:88%;}
+
+  /* ---------- 图表卡片 ---------- */
+  figure{margin:30px 0; background:var(--card); border:1px solid var(--line);
+         border-radius:var(--radius); padding:20px; text-align:center;
+         box-shadow:0 3px 16px rgba(15,23,42,.07); transition:.25s;}
+  figure:hover{transform:translateY(-3px); box-shadow:0 10px 26px rgba(15,23,42,.12);}
+  figure img{max-width:100%; border-radius:8px;}
+  figcaption{font-size:13.5px; color:var(--sub); margin-top:14px; text-align:left; line-height:1.8;}
+  figcaption b{color:var(--ink); font-size:14px;}
+  .tag{display:inline-block; font-size:11.5px; font-weight:700; letter-spacing:.08em;
+       padding:2px 10px; border-radius:99px; margin-right:6px;}
+  .tag.blue{background:#dbeafe; color:#1d4ed8;}
+  .tag.red{background:#fee2e2; color:#b91c1c;}
+  .tag.amber{background:#fef3c7; color:#b45309;}
+
+  /* ---------- 表格 ---------- */
+  table{width:100%; border-collapse:collapse; margin:20px 0; font-size:14px;
+        background:var(--card); border-radius:var(--radius); overflow:hidden;
+        box-shadow:0 2px 10px rgba(15,23,42,.06);}
+  th,td{border-bottom:1px solid var(--line); padding:11px 12px; text-align:center;}
+  thead th{background:#f1f5f9; font-weight:600; font-size:13.5px; letter-spacing:.03em;}
+  tbody tr:hover{background:#f8fafc;}
+  td.ok{color:var(--green); font-weight:700;}
+  td.bad{color:var(--red); font-weight:700;}
+
+  footer{margin-top:70px; padding-top:22px; border-top:1px solid var(--line);
+         color:var(--sub); font-size:12.5px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;}
+
+  @media (max-width:600px){
+    h1{font-size:22px} .page{padding:0 14px 70px}
+    header.hero{margin:0 -14px 8px; padding:48px 20px 38px}
+    table{font-size:12.5px} th,td{padding:8px 6px}
+  }
+  @media print{
+    nav.toc{display:none} figure:hover{transform:none}
+    pre,figure,.card{box-shadow:none} body{background:#fff}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="kicker">COURSEWORK · 第二篇 15 节</div>
+  <h1>MLP 学习参数的实现与可视化<br>隐藏层如何"折叠"空间 × 学习率的四重人格</h1>
+  <div class="meta">从单层线性模型的困境出发，用 PyTorch 亲手实现、训练并可视化一个多层感知机</div>
+  <div class="badges">
+    <span class="badge">PyTorch 2.15</span>
+    <span class="badge">Python 3.11</span>
+    <span class="badge">2026年11月</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#sec1">01 原理简介</a>
+  <a href="#sec2">02 实现</a>
+  <a href="#sec3">03 XOR 实验</a>
+  <a href="#sec4">04 学习率实验</a>
+  <a href="#sec5">05 结论反思</a>
+</nav>
+
+<div class="page">
+
+  <h2 id="sec1"><span class="num">01</span>原理简介</h2>
+  <p>多层感知机（MLP）是在单层线性模型（如 <code>Y = A×颜色 + B×大小 + C</code>）的基础上插入<b>隐藏层</b>，
+  并在每个神经元后接非线性<b>激活函数</b>（本实验用 sigmoid）的网络。它的训练是一个四步循环：
+  <b>前向传播</b>算出预测 → <b>损失函数</b>量化预测与正确答案的差距 →
+  <b>反向传播</b>用链式法则把误差逐层回推、算出每个参数的梯度 →
+  <b>梯度下降</b>沿负梯度方向更新参数（<code>W ← W − η×梯度</code>），重复直至损失收敛。</p>
+
+  <div class="key">
+    <b>为什么必须加隐藏层？</b>
+    单层模型只能画一条直线，而 XOR 的四个样本在坐标系中呈对角线交叉，任何直线都无法分开（线性不可分）。
+    隐藏层的作用是把原始输入空间"折叠"成新的表示空间，使原本线性不可分的样本变得线性可分——
+    本实验用可视化验证了这一点。
+  </div>
+
+  <h2 id="sec2"><span class="num">02</span>实现</h2>
+  <p>网络结构为 <b>2 → 2 → 1</b>（两个隐藏神经元），参数手动定义并借助 PyTorch 的自动求导机制训练，
+  以保证对训练循环中每一步的理解都落在公式本身。核心代码两段：</p>
+
+  <h3>前向传播与损失</h3>
+<pre><code>h = torch.sigmoid(X @ W1 + b1)   # 隐藏层：2个神经元的输出
+p = torch.sigmoid(h @ W2 + b2)   # 输出：概率(0~1)
+loss = -(y*torch.log(p) + (1-y)*torch.log(1-p)).mean()   # 二元交叉熵</code></pre>
+
+  <h3>反向传播与梯度下降</h3>
+<pre><code>loss.backward()                  # 反向传播：自动计算所有参数的梯度
+with torch.no_grad():
+    W1 -= lr * W1.grad           # 梯度下降：沿负梯度方向更新
+    b1 -= lr * b1.grad
+    W2 -= lr * W2.grad
+    b2 -= lr * b2.grad
+W1.grad.zero_(); b1.grad.zero_() # 梯度清零，防止跨轮累加
+W2.grad.zero_(); b2.grad.zero_()</code></pre>
+
+  <h2 id="sec3"><span class="num">03</span>实验一：XOR 的学习过程（lr = 0.5）</h2>
+
+  <figure>
+    <span class="tag blue">图 A</span>
+    <img src="loss_curve_xor.png" alt="损失曲线">
+    <figcaption><b>损失下降曲线。</b>
+      损失从 0.7 附近急剧下降，约 600 轮后进入缓慢收敛区，最终降至 0.03。
+      曲线呈现"先陡后缓"的标准形态：前期梯度大、步子快；接近谷底后梯度自动变小、
+      步子自动变碎——这正是梯度下降的自适应特性。</figcaption>
+  </figure>
+
+  <p>训练结束后模型对四个样本的判定（hidden 列为隐藏层两个神经元的输出）：</p>
+  <table>
+    <thead><tr><th>x1</th><th>x2</th><th>正确答案</th><th>hidden (h1, h2)</th><th>概率</th><th>预测</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>0</td><td>0</td><td><code>(0.969, 0.958)</code></td><td>0.0217</td><td class="ok">0 ✓</td></tr>
+      <tr><td>0</td><td>1</td><td>1</td><td><code>(0.034, 1.000)</code></td><td>0.9722</td><td class="ok">1 ✓</td></tr>
+      <tr><td>1</td><td>0</td><td>1</td><td><code>(1.000, 0.043)</code></td><td>0.9717</td><td class="ok">1 ✓</td></tr>
+      <tr><td>1</td><td>1</td><td>0</td><td><code>(0.975, 0.969)</code></td><td>0.0190</td><td class="ok">0 ✓</td></tr>
+    </tbody>
+  </table>
+
+  <figure>
+    <span class="tag blue">图 B</span><span class="tag amber">核心证据</span>
+    <img src="hidden_space.png" alt="隐藏层空间">
+    <figcaption><b>隐藏层折叠了空间。</b>
+      在原始输入空间中，(0,0) 与 (1,1) 是相距最远的对角线两点；
+      经过隐藏层映射后，它们被送到几乎同一个位置（右上角），
+      而 (0,1)、(1,0) 各居另一角。线性不可分的原始空间被"折叠"成了线性可分的新空间，
+      输出层因此能用一条直线完成分类。值得注意的是：解并不唯一——
+      换随机种子训练时，模型也可能把相同输入折叠向原点，输出层权重随之翻转，
+      但"折叠"这一动作是所有解的共性。</figcaption>
+  </figure>
+
+  <h2 id="sec4"><span class="num">04</span>实验二：学习率的四重人格</h2>
+  <p>固定网络结构、数据与随机种子，仅改变学习率 η（0.01 / 0.1 / 1.0 / 10.0）各训练 2000 轮，
+  用<b>控制变量法</b>观察学习率对训练过程的影响。</p>
+
+  <figure>
+    <span class="tag blue">图 C</span>
+    <img src="lr_compare.png" alt="学习率对比">
+    <figcaption><b>四条损失曲线同框。</b>
+      <b style="color:#2563eb">蓝（0.01）</b>：卡在 ln2≈0.69 附近——这是"永远输出 0.5、纯随机猜测"的损失水平，
+      说明步子太碎时模型根本没有开始学习；
+      <b style="color:#ea580c">橙（0.1）</b>：方向正确、平稳下降但 2000 轮尚未收敛，属于"稳健慢跑型"；
+      <b style="color:#059669">绿（1.0）</b>：快速平滑收敛至 0.01，是本实验的甜点值；
+      <b style="color:#dc2626">红（10.0）</b>：前期剧烈震荡（损失一度冲到 1.45，比随机猜测还差），
+      随后落入一处梯度极小的平坦区被困在 0.47——过大的步长未必发散，
+      更可能"跨过谷底后掉进坑里爬不出来"。</figcaption>
+  </figure>
+
+  <p>各档最终结果对照（实测）：</p>
+  <table>
+    <thead><tr><th>学习率</th><th>最终损失</th><th>判对数</th><th>人格类型</th></tr></thead>
+    <tbody>
+      <tr><td>0.01</td><td>0.6922</td><td class="bad">3 / 4 *</td><td>沉睡型：步长不足，未开始学习</td></tr>
+      <tr><td>0.1</td><td>0.4695</td><td class="bad">3 / 4</td><td>稳健慢跑型：方向正确，轮数不够</td></tr>
+      <tr><td>1.0</td><td>0.0103</td><td class="ok">4 / 4</td><td>甜点型：速度与稳定的平衡</td></tr>
+      <tr><td>10.0</td><td>0.4688</td><td class="bad">2 / 4</td><td>暴走被困型：震荡后陷入平坦区</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <b>一个反直觉的发现：</b>lr=0.01 判对 3/4，看似不错，实则损失卡在 ln2≈0.693（纯随机猜测的水平）——
+    它把所有样本都输出 ≈0.5，因判定阈值 ≥0.5 记为 1，输出 (0,1,1,1) 恰好蒙对 3 个。
+    这说明<b>判对数可能掩盖模型"根本没学"的事实，损失值才是更诚实的指标</b>；
+    反之 lr=10.0 判对 2/4、损失 0.47，则暴露了它确实把部分样本学反了。
+  </div>
+
+  <h2 id="sec5"><span class="num">05</span>结论与反思</h2>
+  <div class="refl">
+    <p><b>结论：</b>学习率的选择是"速度 vs 稳定"的权衡——太小则浪费算力原地不动，
+    太大则剧烈震荡后陷入坏区域，最优值存在但需实验寻找。现代优化器（如 Adam）
+    通过为每个参数自适应调节步长来缓解这一问题。</p>
+    <p><b>反思：</b>实验前我预测 lr=10 会因步长过大而发散（损失变 nan），
+    实测却是"剧烈震荡后被困在 0.47 的平台"——真实系统比预期更微妙。
+    这提醒我：做实验要记录实际发生了什么，而不是确认自己希望发生的。</p>
+  </div>
+
+  <footer>
+    <span>MLP 学习参数的实现与可视化 · 课程作业</span>
+    <span>PyTorch 2.15 (CPU) · Python 3.11 · Matplotlib</span>
+  </footer>
+</div>
+</body>
+</html>
